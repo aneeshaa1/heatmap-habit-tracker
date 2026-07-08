@@ -180,7 +180,7 @@
     const WANTED = (new URLSearchParams(location.search).get("habit") || "")
       .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     const PALETTE = ["#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429", "#0550ae", "#8250df", "#bf3989", "#cf222e", "#fb8500"];
-    const MAX_LEVELS = 50;
+    const MAX_LEVELS = 100;
 
     const statusEl = document.getElementById("status");
     const habitsEl = document.getElementById("habits");
