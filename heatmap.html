@@ -616,7 +616,9 @@
           .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
         if (wanted.length) {
           habits = habits.filter((h) => wanted.includes(h.name.toLowerCase()));
-          document.getElementById("add-habit").hidden = true;
+          // Hide the page title + status line so the embed is just the heatmap.
+          document.querySelector(".page-head").hidden = true;
+          statusEl.hidden = true;
         }
 
         if (habits.length === 0) {
@@ -636,6 +638,7 @@
         for (const habit of habits) renderHabitCard(habit, byHabit[habit.id] || []);
         statusEl.textContent = `${habits.length} habit(s) · ${YEAR}`;
       } catch (err) {
+        statusEl.hidden = false;
         statusEl.textContent = "Error: " + err.message;
         statusEl.className = "err";
         console.error(err);
