@@ -21,6 +21,20 @@
     #status { font-size: 12px; color: #57606a; margin-bottom: 16px; }
     #status.err { color: #cf222e; }
 
+    /* ---- Login ---- */
+    .auth {
+      max-width: 300px; border: 1px solid #d0d7de; border-radius: 10px;
+      padding: 18px; box-sizing: border-box;
+    }
+    .auth h2 { font-size: 15px; margin: 0 0 12px; }
+    .auth input {
+      display: block; width: 100%; box-sizing: border-box; margin-bottom: 8px;
+      padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;
+    }
+    .auth input:focus { border-color: #0969da; outline: none; }
+    .auth .actions { display: flex; gap: 8px; margin-top: 4px; }
+    #auth-msg { font-size: 12px; color: #cf222e; margin-top: 8px; min-height: 14px; }
+
     /* ---- Habit card ---- */
     .card {
       border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px;
@@ -131,8 +145,19 @@
   <div class="page-head">
     <h1>Habit Heatmap</h1>
     <button class="btn primary" id="add-habit">+ Add habit</button>
+    <button class="btn" id="logout" hidden>Log out</button>
   </div>
   <div id="status">Loading…</div>
+  <div id="auth" class="auth" hidden>
+    <h2>Log in</h2>
+    <input type="email" id="auth-email" placeholder="Email" autocomplete="email" />
+    <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" />
+    <div class="actions">
+      <button class="btn primary" id="login-btn">Log in</button>
+      <button class="btn" id="signup-btn">Sign up</button>
+    </div>
+    <div id="auth-msg"></div>
+  </div>
   <div id="habits"></div>
 
   <script type="module">
@@ -144,7 +169,12 @@
 
     const YEAR = 2026;
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const DEMO = true;  // only seeds the very first auto-created habit
+    const DEMO = false;  // only seeds the very first auto-created habit
+
+    // ?habit=Name (or ?habit=Name1,Name2) shows only those habits —
+    // lets each Notion embed hold a single short widget instead of one tall one.
+    const WANTED = (new URLSearchParams(location.search).get("habit") || "")
+      .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     const PALETTE = ["#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429", "#0550ae", "#8250df", "#bf3989", "#cf222e", "#fb8500"];
 
     const statusEl = document.getElementById("status");
@@ -610,15 +640,8 @@
         let { data: habits, error } = await supabase.from("habits").select("*").order("created_at");
         if (error) throw error;
 
-        // ?habit=Name (or ?habit=Name1,Name2) shows only those habits —
-        // lets each Notion embed hold a single short widget instead of one tall one.
-        const wanted = (new URLSearchParams(location.search).get("habit") || "")
-          .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-        if (wanted.length) {
-          habits = habits.filter((h) => wanted.includes(h.name.toLowerCase()));
-          // Hide the page title + status line so the embed is just the heatmap.
-          document.querySelector(".page-head").hidden = true;
-          statusEl.hidden = true;
+        if (WANTED.length) {
+          habits = habits.filter((h) => WANTED.includes(h.name.toLowerCase()));
         }
 
         if (habits.length === 0) {
@@ -644,7 +667,61 @@
         console.error(err);
       }
     }
-    main();
+
+    // ---- Auth ----
+    // Password login works entirely inside a sandboxed iframe (Notion embed);
+    // magic links don't, because they open in a new tab whose session the
+    // embed's partitioned storage can't see.
+    const authEl = document.getElementById("auth");
+    const authMsg = document.getElementById("auth-msg");
+    const logoutBtn = document.getElementById("logout");
+
+    async function handleAuth(kind) {
+      const email = document.getElementById("auth-email").value.trim();
+      const password = document.getElementById("auth-password").value;
+      if (!email || !password) { authMsg.textContent = "Enter an email and password."; return; }
+      authMsg.textContent = "";
+      const { data, error } = kind === "signup"
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password });
+      if (error) { authMsg.textContent = error.message; return; }
+      if (!data.session) {
+        authMsg.textContent = "Check your email to confirm your account, then log in.";
+        return;
+      }
+      enterApp();
+    }
+    document.getElementById("login-btn").addEventListener("click", () => handleAuth("login"));
+    document.getElementById("signup-btn").addEventListener("click", () => handleAuth("signup"));
+    document.getElementById("auth-password").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleAuth("login");
+    });
+    logoutBtn.addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      location.reload();
+    });
+
+    function enterApp() {
+      authEl.hidden = true;
+      logoutBtn.hidden = false;
+      statusEl.hidden = WANTED.length > 0;
+      main();
+    }
+
+    async function init() {
+      if (WANTED.length) {
+        // Filtered embed: just the heatmap, no page chrome.
+        document.querySelector(".page-head").hidden = true;
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        enterApp();
+      } else {
+        statusEl.hidden = true;
+        authEl.hidden = false;
+      }
+    }
+    init();
   </script>
 </body>
 </html>
