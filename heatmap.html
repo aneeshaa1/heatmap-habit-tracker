@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habit Heatmap</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 24px; color: #1f2328; background: #fff;
+    }
+    .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .page-head h1 { font-size: 18px; margin: 0; }
+    .btn {
+      font-size: 13px; padding: 6px 12px; border-radius: 6px;
+      border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer;
+    }
+    .btn.primary { background: #2da44e; color: #fff; border-color: #2da44e; }
+    #status { font-size: 12px; color: #57606a; margin-bottom: 16px; }
+    #status.err { color: #cf222e; }
+
+    /* ---- Habit card ---- */
+    .card {
+      border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px;
+      margin-bottom: 18px; max-width: 780px;
+    }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .card-head input.name {
+      font-size: 15px; font-weight: 600; border: 1px solid transparent;
+      border-radius: 6px; padding: 3px 6px; width: 60%;
+    }
+    .card-head input.name:hover { border-color: #d0d7de; }
+    .card-head input.name:focus { border-color: #0969da; outline: none; }
+    .card-actions { display: flex; gap: 6px; }
+
+    .cal { display: inline-block; }
+    .months { display: grid; gap: 3px; margin-left: 30px; margin-bottom: 4px; font-size: 11px; color: #57606a; }
+    .month { grid-row: 1; white-space: nowrap; }
+    .body { display: flex; gap: 3px; }
+    .days { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; font-size: 11px; color: #57606a; width: 27px; }
+    .day-label { line-height: 12px; }
+    .grid { display: grid; grid-template-rows: repeat(7, 12px); grid-auto-flow: column; grid-auto-columns: 12px; gap: 3px; }
+    .cell { width: 12px; height: 12px; border-radius: 2px; background: #ebedf0; }
+    .grid .cell[data-date] { cursor: pointer; }
+    .grid .cell[data-date]:hover { outline: 1px solid rgba(0,0,0,0.35); }
+    .legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 8px; font-size: 11px; color: #57606a; }
+    .legend .swatch { width: 12px; height: 12px; border-radius: 2px; }
+    .hint { font-size: 11px; color: #57606a; margin-top: 6px; }
+
+    /* ---- Per-card settings ---- */
+    .settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eaeef2; font-size: 13px; }
+    .row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+    .swatch-field { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #57606a; }
+    .swatch-field input[type=color] { width: 34px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+    label { cursor: pointer; }
+
+    /* ---- Click-to-log popover ---- */
+    .popover { position: absolute; z-index: 20; background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 13px; }
+    .popover .date { font-size: 11px; color: #57606a; margin-bottom: 6px; }
+    .popover input { width: 72px; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; }
+    .popover .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .popover button { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer; }
+    .popover button.primary { background: #2da44e; color: #fff; border-color: #2da44e; }
+  </style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>Habit Heatmap</h1>
+    <button class="btn primary" id="add-habit">+ Add habit</button>
+  </div>
+  <div id="status">Loading…</div>
+  <div id="habits"></div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    const SUPABASE_URL = "https://gcvdgragnbkcoxitomij.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_dbRHBbWuyeRyT_TmO4YPpQ_vONUyaGC";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const YEAR = 2026;
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const DEMO = true;  // only seeds the very first auto-created habit
+
+    const statusEl = document.getElementById("status");
+    const habitsEl = document.getElementById("habits");
+
+    // ---- Pure helpers ----
+    function defaultColors(mode) {
+      if (mode === "binary") return { empty: "#ebedf0", scale: [{ min: 1, color: "#40c463" }] };
+      return { empty: "#ebedf0", scale: [
+        { min: 1, color: "#9be9a8" }, { min: 2, color: "#40c463" },
+        { min: 3, color: "#30a14e" }, { min: 4, color: "#216e39" },
+      ]};
+    }
+    function resolveColors(habit) {
+      const c = habit.colors;
+      if (c && !Array.isArray(c) && Array.isArray(c.scale) && c.scale.length) return c;
+      return defaultColors(habit.mode || "graded");
+    }
+    function colorFor(value, colors) {
+      if (!value) return colors.empty;
+      let chosen = colors.empty;
+      for (const stop of colors.scale) if (value >= stop.min) chosen = stop.color;
+      return chosen;
+    }
+    function isoDate(d) {
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${m}-${day}`;
+    }
+    function buildWeeks(year) {
+      const first = new Date(year, 0, 1), last = new Date(year, 11, 31);
+      const start = new Date(first); start.setDate(start.getDate() - start.getDay());
+      const weeks = []; const cur = new Date(start);
+      while (cur <= last) {
+        const week = [];
+        for (let d = 0; d < 7; d++) {
+          const date = new Date(cur);
+          week.push({ date, inYear: date >= first && date <= last });
+          cur.setDate(cur.getDate() + 1);
+        }
+        weeks.push(week);
+      }
+      return weeks;
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    const WEEKS = buildWeeks(YEAR);
+
+    // ---- Shared popover ----
+    let popover = null;
+    function closePopover() { if (popover) { popover.remove(); popover = null; } }
+    function openEditor(cell, key, currentValue, onSave) {
+      closePopover();
+      const rect = cell.getBoundingClientRect();
+      popover = document.createElement("div");
+      popover.className = "popover";
+      popover.style.left = (rect.left + window.scrollX) + "px";
+      popover.style.top = (rect.bottom + window.scrollY + 6) + "px";
+      popover.innerHTML = `
+        <div class="date">${key}</div>
+        <input type="number" step="any" min="0" />
+        <div class="actions">
+          <button class="primary" data-act="save">Save</button>
+          <button data-act="clear">Clear</button>
+        </div>`;
+      document.body.appendChild(popover);
+      const input = popover.querySelector("input");
+      input.value = currentValue ?? ""; input.focus(); input.select();
+      const save = async () => { await onSave(Number(input.value) || 0); closePopover(); };
+      popover.querySelector("[data-act=save]").onclick = save;
+      popover.querySelector("[data-act=clear]").onclick = async () => { await onSave(0); closePopover(); };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") save();
+        if (e.key === "Escape") closePopover();
+      });
+    }
+    document.addEventListener("mousedown", (e) => {
+      if (popover && !popover.contains(e.target) && !e.target.dataset.date) closePopover();
+    });
+
+    // ---- Render one habit as a self-contained card ----
+    function renderHabitCard(habit, entryRows) {
+      const entriesByDate = {};
+      for (const e of entryRows) entriesByDate[e.date] = Number(e.value);
+
+      // Per-card working state (mode + colors), synced to the DB on change.
+      const state = { mode: habit.mode || "graded", colors: resolveColors(habit) };
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="card-head">
+          <input class="name" value="${escapeHtml(habit.name)}" />
+          <div class="card-actions">
+            <button class="btn settings-btn">⚙ Settings</button>
+            <button class="btn delete-btn">Delete</button>
+          </div>
+        </div>
+        <div class="cal">
+          <div class="months"></div>
+          <div class="body"><div class="days"></div><div class="grid"></div></div>
+          <div class="legend"></div>
+          <div class="hint"></div>
+        </div>
+        <div class="settings" hidden>
+          <div class="row">
+            <span>Mode:</span>
+            <label><input type="radio" class="mode" value="graded" /> Graded</label>
+            <label><input type="radio" class="mode" value="binary" /> Binary</label>
+          </div>
+          <div class="row"><div class="swatches"></div></div>
+        </div>`;
+      habitsEl.appendChild(card);
+
+      const gridEl = card.querySelector(".grid");
+      const daysEl = card.querySelector(".days");
+      const monthsEl = card.querySelector(".months");
+      const legendEl = card.querySelector(".legend");
+      const hintEl = card.querySelector(".hint");
+
+      function paintGrid() {
+        gridEl.innerHTML = daysEl.innerHTML = monthsEl.innerHTML = "";
+        const dayNames = { 1: "Mon", 3: "Wed", 5: "Fri" };
+        for (let r = 0; r < 7; r++) {
+          const lbl = document.createElement("div");
+          lbl.className = "day-label"; lbl.textContent = dayNames[r] || "";
+          daysEl.appendChild(lbl);
+        }
+        for (const week of WEEKS) for (const day of week) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          if (!day.inYear) cell.style.visibility = "hidden";
+          else {
+            const key = isoDate(day.date);
+            const v = entriesByDate[key] || 0;
+            cell.style.background = colorFor(v, state.colors);
+            cell.title = v ? `${key}: ${v}` : `${key}: no entry`;
+            cell.dataset.date = key;
+          }
+          gridEl.appendChild(cell);
+        }
+        monthsEl.style.gridTemplateColumns = `repeat(${WEEKS.length}, 12px)`;
+        let lastMonth = -1;
+        WEEKS.forEach((week, i) => {
+          const firstInYear = week.find((d) => d.inYear);
+          if (!firstInYear) return;
+          const m = firstInYear.date.getMonth();
+          if (m !== lastMonth) {
+            lastMonth = m;
+            const label = document.createElement("div");
+            label.className = "month"; label.textContent = MONTHS[m];
+            label.style.gridColumnStart = i + 1;
+            monthsEl.appendChild(label);
+          }
+        });
+      }
+
+      function paintLegend() {
+        legendEl.innerHTML = "";
+        const mk = (c) => { const s = document.createElement("span"); s.className = "swatch"; s.style.background = c; return s; };
+        const t = (x) => { const s = document.createElement("span"); s.textContent = x; return s; };
+        const c = state.colors;
+        if (c.scale.length === 1) legendEl.append(t("Not done"), mk(c.empty), mk(c.scale[0].color), t("Done"));
+        else { legendEl.append(t("Less"), mk(c.empty)); c.scale.forEach((s) => legendEl.append(mk(s.color))); legendEl.append(t("More")); }
+      }
+
+      function paintHint() {
+        const n = Object.keys(entriesByDate).length;
+        hintEl.textContent = `${n} days logged · ` +
+          (state.mode === "binary" ? "click a day to toggle" : "click a day to enter a value");
+      }
+
+      function repaint() { paintGrid(); paintLegend(); paintHint(); }
+
+      // Write a single day for THIS habit
+      async function logValue(key, value) {
+        if (value > 0) {
+          entriesByDate[key] = value;
+          const { error } = await supabase.from("entries")
+            .upsert({ habit_id: habit.id, date: key, value }, { onConflict: "habit_id,date" });
+          if (error) console.error(error);
+        } else {
+          delete entriesByDate[key];
+          const { error } = await supabase.from("entries")
+            .delete().eq("habit_id", habit.id).eq("date", key);
+          if (error) console.error(error);
+        }
+        repaint();
+      }
+
+      gridEl.addEventListener("click", async (e) => {
+        const cell = e.target.closest(".cell");
+        if (!cell || !cell.dataset.date) return;
+        const key = cell.dataset.date;
+        if (state.mode === "binary") {
+          const cur = entriesByDate[key] || 0;
+          await logValue(key, cur ? 0 : 1);
+        } else {
+          openEditor(cell, key, entriesByDate[key], (v) => logValue(key, v));
+        }
+      });
+
+      // ---- Settings ----
+      let saveTimer = null;
+      async function saveHabit(patch) {
+        Object.assign(habit, patch);
+        const { error } = await supabase.from("habits").update(patch).eq("id", habit.id);
+        if (error) console.error(error);
+      }
+      function saveColorsDebounced() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => saveHabit({ colors: state.colors }), 400);
+      }
+
+      function buildSwatches() {
+        const wrap = card.querySelector(".swatches");
+        wrap.innerHTML = "";
+        state.colors.scale.forEach((stop, i) => {
+          const field = document.createElement("div"); field.className = "swatch-field";
+          const input = document.createElement("input"); input.type = "color"; input.value = stop.color;
+          input.addEventListener("input", () => {
+            state.colors.scale[i].color = input.value;
+            paintGrid(); paintLegend();
+            saveColorsDebounced();
+          });
+          const label = document.createElement("span");
+          label.textContent = state.colors.scale.length === 1 ? "Done" : `≥ ${stop.min}`;
+          field.append(input, label); wrap.appendChild(field);
+        });
+      }
+
+      // init settings controls
+      card.querySelector(`.mode[value=${state.mode}]`).checked = true;
+      card.querySelectorAll(".mode").forEach((radio) => {
+        radio.addEventListener("change", () => {
+          state.mode = radio.value;
+          state.colors = defaultColors(radio.value);
+          buildSwatches(); repaint();
+          saveHabit({ mode: state.mode, colors: state.colors });
+        });
+      });
+      card.querySelector(".settings-btn").addEventListener("click", () => {
+        const s = card.querySelector(".settings");
+        s.hidden = !s.hidden;
+      });
+      card.querySelector(".name").addEventListener("change", (e) => {
+        saveHabit({ name: e.target.value.trim() || "Untitled" });
+      });
+      card.querySelector(".delete-btn").addEventListener("click", async () => {
+        if (!confirm(`Delete "${habit.name}" and all its data?`)) return;
+        const { error } = await supabase.from("habits").delete().eq("id", habit.id);
+        if (error) { console.error(error); return; }
+        card.remove();
+      });
+
+      buildSwatches();
+      repaint();
+    }
+
+    async function seedDemo(habitId) {
+      const rows = []; const seen = {};
+      for (let i = 0; i < 60; i++) {
+        const day = new Date(YEAR, 0, 1);
+        day.setDate(day.getDate() + Math.floor(Math.random() * 189));
+        const key = isoDate(day);
+        if (seen[key]) continue; seen[key] = true;
+        rows.push({ habit_id: habitId, date: key, value: 1 + Math.floor(Math.random() * 4) });
+      }
+      await supabase.from("entries").upsert(rows, { onConflict: "habit_id,date" });
+    }
+
+    document.getElementById("add-habit").addEventListener("click", async () => {
+      const { data, error } = await supabase.from("habits")
+        .insert({ name: "New habit", mode: "graded", colors: defaultColors("graded") })
+        .select().single();
+      if (error) { console.error(error); return; }
+      renderHabitCard(data, []);
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+
+    async function main() {
+      try {
+        let { data: habits, error } = await supabase.from("habits").select("*").order("created_at");
+        if (error) throw error;
+
+        if (habits.length === 0) {
+          const { data, error: e2 } = await supabase.from("habits")
+            .insert({ name: "My Habit", mode: "graded", colors: defaultColors("graded") })
+            .select().single();
+          if (e2) throw e2;
+          habits = [data];
+          if (DEMO) await seedDemo(data.id);
+        }
+
+        const { data: entries } = await supabase.from("entries").select("habit_id, date, value");
+        const byHabit = {};
+        for (const e of entries) (byHabit[e.habit_id] ||= []).push(e);
+
+        habitsEl.innerHTML = "";
+        for (const habit of habits) renderHabitCard(habit, byHabit[habit.id] || []);
+        statusEl.textContent = `${habits.length} habit(s) · ${YEAR}`;
+      } catch (err) {
+        statusEl.textContent = "Error: " + err.message;
+        statusEl.className = "err";
+        console.error(err);
+      }
+    }
+    main();
+  </script>
+</body>
+</html>
