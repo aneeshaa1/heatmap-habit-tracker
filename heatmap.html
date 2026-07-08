@@ -127,6 +127,28 @@
       }
       return defaultColors(habit.mode || "graded");
     }
+    function parseHex(hex) {
+      const h = String(hex).replace("#", "");
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    function toHex([r, g, b]) {
+      return "#" + [r, g, b].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+    }
+    function lerpColor(c1, c2, t) {
+      const a = parseHex(c1), b = parseHex(c2);
+      return toHex(a.map((v, i) => v + (b[i] - v) * t));
+    }
+    function fillGradientScale(scale) {
+      const sorted = normalizeScale(scale);
+      if (sorted.length < 2) return sorted;
+      const first = sorted[0].color, last = sorted[sorted.length - 1].color;
+      const stops = sorted.length === 2 ? resizeScale(sorted, 4) : sorted;
+      const n = stops.length;
+      return stops.map((stop, i) => ({
+        ...stop,
+        color: lerpColor(first, last, n === 1 ? 0 : i / (n - 1)),
+      }));
+    }
     function colorFor(value, colors) {
       if (!value) return colors.empty;
       let chosen = colors.empty;
@@ -235,6 +257,9 @@
           <div class="row graded-only">
             <span>Colors:</span>
             <input type="number" class="level-count" min="1" max="10" step="1" />
+          </div>
+          <div class="row graded-only gradient-row" hidden>
+            <button type="button" class="btn gradient-fill-btn">Fill gradient between colors</button>
           </div>
           <div class="row"><div class="swatches"></div></div>
         </div>`;
@@ -352,8 +377,16 @@
       }
 
       function updateGradedControls() {
-        const gradedOnly = card.querySelector(".graded-only");
-        if (gradedOnly) gradedOnly.hidden = state.mode === "binary";
+        const isBinary = state.mode === "binary";
+        card.querySelectorAll(".graded-only").forEach((el) => { el.hidden = isBinary; });
+        const gradRow = card.querySelector(".gradient-row");
+        const gradBtn = card.querySelector(".gradient-fill-btn");
+        if (gradRow) gradRow.hidden = isBinary || state.colors.scale.length < 2;
+        if (gradBtn) {
+          gradBtn.textContent = state.colors.scale.length === 2
+            ? "Generate 4-level gradient"
+            : "Fill gradient between first & last";
+        }
       }
 
       function buildSwatches() {
@@ -395,6 +428,7 @@
           wrap.appendChild(field);
         });
         syncLevelCountInput();
+        updateGradedControls();
       }
 
       // init settings controls
@@ -405,6 +439,13 @@
         const count = Math.max(1, Math.min(10, Number(e.target.value) || 1));
         state.colors.scale = resizeScale(state.colors.scale, count);
         buildSwatches(); paintGrid(); paintLegend();
+        updateGradedControls();
+        saveHabit({ colors: state.colors });
+      });
+      card.querySelector(".gradient-fill-btn").addEventListener("click", () => {
+        state.colors.scale = fillGradientScale(state.colors.scale);
+        buildSwatches(); paintGrid(); paintLegend();
+        updateGradedControls();
         saveHabit({ colors: state.colors });
       });
       card.querySelectorAll(".mode").forEach((radio) => {
