@@ -21,6 +21,7 @@
     }
     .btn.primary { background: #2da44e; color: #fff; border-color: #2da44e; }
     .btn.confirm { background: #cf222e; color: #fff; border-color: #cf222e; }
+    .btn.icon { padding: 6px 9px; }
     #status { font-size: 12px; color: #57606a; margin-bottom: 16px; }
     #status.err { color: #cf222e; }
 
@@ -328,10 +329,13 @@
 
       const card = document.createElement("div");
       card.className = "card";
+      card.dataset.habitId = habit.id;
       card.innerHTML = `
         <div class="card-head">
           <input class="name" value="${escapeHtml(habit.name)}" />
           <div class="card-actions">
+            <button class="btn icon move-up" title="Move up">↑</button>
+            <button class="btn icon move-down" title="Move down">↓</button>
             <button class="btn settings-btn">⚙ Settings</button>
             <button class="btn delete-btn">Delete</button>
           </div>
@@ -594,6 +598,17 @@
       card.querySelector(".name").addEventListener("change", (e) => {
         saveHabit({ name: e.target.value.trim() || "Untitled" });
       });
+      // Reordering only makes sense in the full view: a filtered embed sees a
+      // subset, and renumbering just that subset would scramble the rest.
+      card.querySelectorAll(".move-up, .move-down").forEach((btn) => { btn.hidden = WANTED.length > 0; });
+      card.querySelector(".move-up").addEventListener("click", () => {
+        const prev = card.previousElementSibling;
+        if (prev) { habitsEl.insertBefore(card, prev); persistOrder(); }
+      });
+      card.querySelector(".move-down").addEventListener("click", () => {
+        const next = card.nextElementSibling;
+        if (next) { habitsEl.insertBefore(next, card); persistOrder(); }
+      });
       // Two-step inline confirm: confirm() dialogs are blocked inside
       // sandboxed iframes (e.g. the Notion embed), so we can't use them.
       const deleteBtn = card.querySelector(".delete-btn");
@@ -630,9 +645,17 @@
       await supabase.from("entries").upsert(rows, { onConflict: "habit_id,date" });
     }
 
+    // Save every card's on-screen index as its position, so the order survives reloads.
+    async function persistOrder() {
+      const results = await Promise.all([...habitsEl.children].map((el, i) =>
+        supabase.from("habits").update({ position: i }).eq("id", el.dataset.habitId)));
+      for (const { error } of results) if (error) console.error(error);
+    }
+
     document.getElementById("add-habit").addEventListener("click", async () => {
       const { data, error } = await supabase.from("habits")
-        .insert({ name: "New habit", mode: "graded", colors: defaultColors("graded") })
+        .insert({ name: "New habit", mode: "graded", colors: defaultColors("graded"),
+                  position: habitsEl.children.length })
         .select().single();
       if (error) { console.error(error); return; }
       renderHabitCard(data, []);
@@ -641,7 +664,8 @@
 
     async function main() {
       try {
-        let { data: habits, error } = await supabase.from("habits").select("*").order("created_at");
+        let { data: habits, error } = await supabase.from("habits").select("*")
+          .order("position").order("created_at");
         if (error) throw error;
 
         if (WANTED.length) {
