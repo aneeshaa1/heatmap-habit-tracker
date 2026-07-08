@@ -610,6 +610,15 @@
         let { data: habits, error } = await supabase.from("habits").select("*").order("created_at");
         if (error) throw error;
 
+        // ?habit=Name (or ?habit=Name1,Name2) shows only those habits —
+        // lets each Notion embed hold a single short widget instead of one tall one.
+        const wanted = (new URLSearchParams(location.search).get("habit") || "")
+          .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+        if (wanted.length) {
+          habits = habits.filter((h) => wanted.includes(h.name.toLowerCase()));
+          document.getElementById("add-habit").hidden = true;
+        }
+
         if (habits.length === 0) {
           const { data, error: e2 } = await supabase.from("habits")
             .insert({ name: "My Habit", mode: "graded", colors: defaultColors("graded") })
