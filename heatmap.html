@@ -22,7 +22,7 @@
     /* ---- Habit card ---- */
     .card {
       border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px;
-      margin-bottom: 18px; max-width: 780px;
+      margin-bottom: 18px; width: fit-content; max-width: 100%; box-sizing: border-box;
     }
     .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .card-head input.name {
@@ -33,7 +33,7 @@
     .card-head input.name:focus { border-color: #0969da; outline: none; }
     .card-actions { display: flex; gap: 6px; }
 
-    .cal { display: inline-block; }
+    .cal { display: inline-block; max-width: 100%; overflow-x: auto; }
     .months { display: grid; gap: 3px; margin-left: 30px; margin-bottom: 4px; font-size: 11px; color: #57606a; }
     .month { grid-row: 1; white-space: nowrap; }
     .body { display: flex; gap: 3px; }
@@ -53,6 +53,13 @@
     .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
     .swatch-field { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #57606a; }
     .swatch-field input[type=color] { width: 34px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+    .swatch-field input[type=number].min-val {
+      width: 52px; padding: 2px 4px; border: 1px solid #d0d7de; border-radius: 4px;
+      font-size: 11px; text-align: center;
+    }
+    .settings input.level-count {
+      width: 52px; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;
+    }
     label { cursor: pointer; }
 
     /* ---- Click-to-log popover ---- */
@@ -82,21 +89,42 @@
     const YEAR = 2026;
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const DEMO = true;  // only seeds the very first auto-created habit
+    const PALETTE = ["#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429", "#0550ae", "#8250df", "#bf3989", "#cf222e", "#fb8500"];
 
     const statusEl = document.getElementById("status");
     const habitsEl = document.getElementById("habits");
 
     // ---- Pure helpers ----
-    function defaultColors(mode) {
+    function defaultColors(mode, count = 4) {
       if (mode === "binary") return { empty: "#ebedf0", scale: [{ min: 1, color: "#40c463" }] };
-      return { empty: "#ebedf0", scale: [
-        { min: 1, color: "#9be9a8" }, { min: 2, color: "#40c463" },
-        { min: 3, color: "#30a14e" }, { min: 4, color: "#216e39" },
-      ]};
+      const n = Math.max(1, Math.min(10, count));
+      const scale = [];
+      for (let i = 0; i < n; i++) scale.push({ min: i + 1, color: PALETTE[i % PALETTE.length] });
+      return { empty: "#ebedf0", scale };
+    }
+    function normalizeScale(scale) {
+      return [...scale]
+        .map((s) => ({ min: Math.max(1, Number(s.min) || 1), color: s.color }))
+        .sort((a, b) => a.min - b.min);
+    }
+    function resizeScale(scale, count) {
+      const sorted = normalizeScale(scale);
+      const n = Math.max(1, Math.min(10, count));
+      const result = [];
+      for (let i = 0; i < n; i++) {
+        if (sorted[i]) result.push({ ...sorted[i] });
+        else {
+          const prevMin = result[i - 1]?.min ?? 0;
+          result.push({ min: prevMin + 1, color: PALETTE[i % PALETTE.length] });
+        }
+      }
+      return result;
     }
     function resolveColors(habit) {
       const c = habit.colors;
-      if (c && !Array.isArray(c) && Array.isArray(c.scale) && c.scale.length) return c;
+      if (c && !Array.isArray(c) && Array.isArray(c.scale) && c.scale.length) {
+        return { empty: c.empty || "#ebedf0", scale: normalizeScale(c.scale) };
+      }
       return defaultColors(habit.mode || "graded");
     }
     function colorFor(value, colors) {
@@ -109,6 +137,17 @@
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       return `${d.getFullYear()}-${m}-${day}`;
+    }
+    function startOfDay(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    function isFutureEmpty(date, value) {
+      if (value) return false;
+      const today = startOfDay(new Date());
+      const day = startOfDay(date);
+      if (YEAR < today.getFullYear()) return false;
+      if (YEAR > today.getFullYear()) return true;
+      return day > today;
     }
     function buildWeeks(year) {
       const first = new Date(year, 0, 1), last = new Date(year, 11, 31);
@@ -193,6 +232,10 @@
             <label><input type="radio" class="mode" value="graded" /> Graded</label>
             <label><input type="radio" class="mode" value="binary" /> Binary</label>
           </div>
+          <div class="row graded-only">
+            <span>Colors:</span>
+            <input type="number" class="level-count" min="1" max="10" step="1" />
+          </div>
           <div class="row"><div class="swatches"></div></div>
         </div>`;
       habitsEl.appendChild(card);
@@ -218,9 +261,12 @@
           else {
             const key = isoDate(day.date);
             const v = entriesByDate[key] || 0;
-            cell.style.background = colorFor(v, state.colors);
-            cell.title = v ? `${key}: ${v}` : `${key}: no entry`;
-            cell.dataset.date = key;
+            if (isFutureEmpty(day.date, v)) cell.style.visibility = "hidden";
+            else {
+              cell.style.background = colorFor(v, state.colors);
+              cell.title = v ? `${key}: ${v}` : `${key}: no entry`;
+              cell.dataset.date = key;
+            }
           }
           gridEl.appendChild(cell);
         }
@@ -294,32 +340,81 @@
       }
       function saveColorsDebounced() {
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => saveHabit({ colors: state.colors }), 400);
+        saveTimer = setTimeout(() => {
+          state.colors.scale = normalizeScale(state.colors.scale);
+          saveHabit({ colors: state.colors });
+        }, 400);
+      }
+
+      function syncLevelCountInput() {
+        const input = card.querySelector(".level-count");
+        if (input) input.value = state.colors.scale.length;
+      }
+
+      function updateGradedControls() {
+        const gradedOnly = card.querySelector(".graded-only");
+        if (gradedOnly) gradedOnly.hidden = state.mode === "binary";
       }
 
       function buildSwatches() {
         const wrap = card.querySelector(".swatches");
         wrap.innerHTML = "";
+        const isBinary = state.mode === "binary";
         state.colors.scale.forEach((stop, i) => {
           const field = document.createElement("div"); field.className = "swatch-field";
-          const input = document.createElement("input"); input.type = "color"; input.value = stop.color;
-          input.addEventListener("input", () => {
-            state.colors.scale[i].color = input.value;
+
+          const colorInput = document.createElement("input");
+          colorInput.type = "color"; colorInput.value = stop.color;
+          colorInput.addEventListener("input", () => {
+            state.colors.scale[i].color = colorInput.value;
             paintGrid(); paintLegend();
             saveColorsDebounced();
           });
+
           const label = document.createElement("span");
-          label.textContent = state.colors.scale.length === 1 ? "Done" : `≥ ${stop.min}`;
-          field.append(input, label); wrap.appendChild(field);
+          if (isBinary) {
+            label.textContent = "Done";
+          } else {
+            const minInput = document.createElement("input");
+            minInput.type = "number"; minInput.className = "min-val";
+            minInput.min = "1"; minInput.step = "any"; minInput.value = stop.min;
+            minInput.title = "Minimum value for this color";
+            minInput.addEventListener("change", () => {
+              state.colors.scale[i].min = Math.max(1, Number(minInput.value) || 1);
+              state.colors.scale = normalizeScale(state.colors.scale);
+              buildSwatches(); paintGrid(); paintLegend();
+              saveColorsDebounced();
+            });
+            label.textContent = "≥ value";
+            field.append(colorInput, minInput, label);
+            wrap.appendChild(field);
+            return;
+          }
+
+          field.append(colorInput, label);
+          wrap.appendChild(field);
         });
+        syncLevelCountInput();
       }
 
       // init settings controls
       card.querySelector(`.mode[value=${state.mode}]`).checked = true;
+      syncLevelCountInput();
+      updateGradedControls();
+      card.querySelector(".level-count").addEventListener("change", (e) => {
+        const count = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+        state.colors.scale = resizeScale(state.colors.scale, count);
+        buildSwatches(); paintGrid(); paintLegend();
+        saveHabit({ colors: state.colors });
+      });
       card.querySelectorAll(".mode").forEach((radio) => {
         radio.addEventListener("change", () => {
+          const prevCount = state.colors.scale.length;
           state.mode = radio.value;
-          state.colors = defaultColors(radio.value);
+          state.colors = radio.value === "binary"
+            ? defaultColors("binary")
+            : defaultColors("graded", prevCount > 1 ? prevCount : 4);
+          updateGradedControls();
           buildSwatches(); repaint();
           saveHabit({ mode: state.mode, colors: state.colors });
         });
