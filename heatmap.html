@@ -9,6 +9,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 24px; color: #1f2328; background: #fff;
     }
+    [hidden] { display: none !important; }
     .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
     .page-head h1 { font-size: 18px; margin: 0; }
     .btn {
@@ -22,7 +23,7 @@
     /* ---- Habit card ---- */
     .card {
       border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px;
-      margin-bottom: 18px; max-width: 780px;
+      margin-bottom: 18px; width: fit-content; max-width: 100%; box-sizing: border-box;
     }
     .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .card-head input.name {
@@ -33,7 +34,7 @@
     .card-head input.name:focus { border-color: #0969da; outline: none; }
     .card-actions { display: flex; gap: 6px; }
 
-    .cal { display: inline-block; }
+    .cal { display: inline-block; max-width: 100%; overflow-x: auto; }
     .months { display: grid; gap: 3px; margin-left: 30px; margin-bottom: 4px; font-size: 11px; color: #57606a; }
     .month { grid-row: 1; white-space: nowrap; }
     .body { display: flex; gap: 3px; }
@@ -48,11 +49,72 @@
     .hint { font-size: 11px; color: #57606a; margin-top: 6px; }
 
     /* ---- Per-card settings ---- */
-    .settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eaeef2; font-size: 13px; }
-    .row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-    .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
-    .swatch-field { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #57606a; }
-    .swatch-field input[type=color] { width: 34px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+    .settings {
+      margin-top: 14px; padding: 14px; border-radius: 8px; background: #f6f8fa;
+      font-size: 13px; display: flex; flex-direction: column; gap: 14px;
+    }
+    .setting { display: flex; align-items: flex-start; gap: 16px; }
+    .setting-label {
+      font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      color: #57606a; width: 64px; flex-shrink: 0; line-height: 28px;
+    }
+    .setting-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+    .segmented { display: inline-flex; background: #eaeef2; border-radius: 8px; padding: 2px; }
+    .segmented label { cursor: pointer; }
+    .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+    .segmented span {
+      display: inline-block; padding: 4px 12px; border-radius: 6px;
+      font-size: 12px; color: #57606a; transition: all .15s ease; user-select: none;
+    }
+    .segmented input:checked + span {
+      background: #fff; color: #1f2328; font-weight: 500;
+      box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    }
+
+    .stepper {
+      display: inline-flex; align-items: center; background: #fff;
+      border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden;
+    }
+    .stepper .step-btn {
+      width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+      font-size: 14px; color: #57606a; line-height: 1;
+    }
+    .stepper .step-btn:hover { background: #f6f8fa; color: #1f2328; }
+    .stepper input.level-count {
+      width: 32px; border: none; outline: none; text-align: center;
+      font-size: 13px; padding: 0; background: transparent;
+      -moz-appearance: textfield; appearance: textfield;
+    }
+    .stepper input.level-count::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+    .swatch-field { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; color: #57606a; }
+    .swatch-field input[type=color] {
+      width: 26px; height: 26px; border: none; border-radius: 6px;
+      background: none; cursor: pointer; padding: 0; -webkit-appearance: none; appearance: none;
+    }
+    .swatch-field input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+    .swatch-field input[type=color]::-webkit-color-swatch { border: none; border-radius: 6px; }
+    .swatch-field input[type=color]::-moz-color-swatch { border: none; border-radius: 6px; }
+    .min-wrap {
+      display: inline-flex; align-items: center; gap: 1px;
+      background: #fff; border: 1px solid #d0d7de; border-radius: 999px; padding: 1px 6px;
+    }
+    .min-wrap input.min-val {
+      width: 26px; border: none; outline: none; background: transparent;
+      font-size: 11px; text-align: center; padding: 0;
+      -moz-appearance: textfield; appearance: textfield;
+    }
+    .min-wrap input.min-val::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    .gradient-fill-btn {
+      border: none; background: none; cursor: pointer; padding: 4px 0;
+      font-size: 12px; color: #0969da;
+    }
+    .gradient-fill-btn:hover { text-decoration: underline; }
+
+    .settings-btn.open { background: #eaeef2; }
     label { cursor: pointer; }
 
     /* ---- Click-to-log popover ---- */
@@ -82,22 +144,69 @@
     const YEAR = 2026;
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const DEMO = true;  // only seeds the very first auto-created habit
+    const PALETTE = ["#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429", "#0550ae", "#8250df", "#bf3989", "#cf222e", "#fb8500"];
 
     const statusEl = document.getElementById("status");
     const habitsEl = document.getElementById("habits");
 
     // ---- Pure helpers ----
-    function defaultColors(mode) {
+    function defaultColors(mode, count = 4) {
       if (mode === "binary") return { empty: "#ebedf0", scale: [{ min: 1, color: "#40c463" }] };
-      return { empty: "#ebedf0", scale: [
-        { min: 1, color: "#9be9a8" }, { min: 2, color: "#40c463" },
-        { min: 3, color: "#30a14e" }, { min: 4, color: "#216e39" },
-      ]};
+      const n = Math.max(1, Math.min(10, count));
+      const scale = [];
+      for (let i = 0; i < n; i++) scale.push({ min: i + 1, color: PALETTE[i % PALETTE.length] });
+      return { empty: "#ebedf0", scale };
+    }
+    function normalizeScale(scale) {
+      return [...scale]
+        .map((s) => ({ min: Math.max(1, Number(s.min) || 1), color: s.color }))
+        .sort((a, b) => a.min - b.min);
+    }
+    function resizeScale(scale, count) {
+      const sorted = normalizeScale(scale);
+      const n = Math.max(1, Math.min(10, count));
+      const result = [];
+      for (let i = 0; i < n; i++) {
+        if (sorted[i]) result.push({ ...sorted[i] });
+        else {
+          const prevMin = result[i - 1]?.min ?? 0;
+          result.push({ min: prevMin + 1, color: PALETTE[i % PALETTE.length] });
+        }
+      }
+      return result;
     }
     function resolveColors(habit) {
       const c = habit.colors;
-      if (c && !Array.isArray(c) && Array.isArray(c.scale) && c.scale.length) return c;
+      if (c && !Array.isArray(c) && Array.isArray(c.scale) && c.scale.length) {
+        const out = { empty: c.empty || "#ebedf0", scale: normalizeScale(c.scale) };
+        if (Array.isArray(c.gradedScale) && c.gradedScale.length) {
+          out.gradedScale = normalizeScale(c.gradedScale);
+        }
+        return out;
+      }
       return defaultColors(habit.mode || "graded");
+    }
+    function parseHex(hex) {
+      const h = String(hex).replace("#", "");
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    function toHex([r, g, b]) {
+      return "#" + [r, g, b].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+    }
+    function lerpColor(c1, c2, t) {
+      const a = parseHex(c1), b = parseHex(c2);
+      return toHex(a.map((v, i) => v + (b[i] - v) * t));
+    }
+    function fillGradientScale(scale) {
+      const sorted = normalizeScale(scale);
+      if (sorted.length < 2) return sorted;
+      const first = sorted[0].color, last = sorted[sorted.length - 1].color;
+      const stops = sorted.length === 2 ? resizeScale(sorted, 4) : sorted;
+      const n = stops.length;
+      return stops.map((stop, i) => ({
+        ...stop,
+        color: lerpColor(first, last, n === 1 ? 0 : i / (n - 1)),
+      }));
     }
     function colorFor(value, colors) {
       if (!value) return colors.empty;
@@ -109,6 +218,17 @@
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       return `${d.getFullYear()}-${m}-${day}`;
+    }
+    function startOfDay(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    function isFutureEmpty(date, value) {
+      if (value) return false;
+      const today = startOfDay(new Date());
+      const day = startOfDay(date);
+      if (YEAR < today.getFullYear()) return false;
+      if (YEAR > today.getFullYear()) return true;
+      return day > today;
     }
     function buildWeeks(year) {
       const first = new Date(year, 0, 1), last = new Date(year, 11, 31);
@@ -188,12 +308,32 @@
           <div class="hint"></div>
         </div>
         <div class="settings" hidden>
-          <div class="row">
-            <span>Mode:</span>
-            <label><input type="radio" class="mode" value="graded" /> Graded</label>
-            <label><input type="radio" class="mode" value="binary" /> Binary</label>
+          <div class="setting">
+            <span class="setting-label">Tracking</span>
+            <div class="setting-control">
+              <div class="segmented">
+                <label><input type="radio" class="mode" name="mode-${habit.id}" value="graded" /><span>Graded</span></label>
+                <label><input type="radio" class="mode" name="mode-${habit.id}" value="binary" /><span>Yes / No</span></label>
+              </div>
+            </div>
           </div>
-          <div class="row"><div class="swatches"></div></div>
+          <div class="setting graded-only">
+            <span class="setting-label">Levels</span>
+            <div class="setting-control">
+              <div class="stepper">
+                <button type="button" class="step-btn" data-step="-1" aria-label="Fewer levels">−</button>
+                <input type="number" class="level-count" min="1" max="10" step="1" />
+                <button type="button" class="step-btn" data-step="1" aria-label="More levels">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="setting">
+            <span class="setting-label">Colors</span>
+            <div class="setting-control">
+              <div class="swatches"></div>
+              <button type="button" class="gradient-fill-btn" hidden>Auto gradient</button>
+            </div>
+          </div>
         </div>`;
       habitsEl.appendChild(card);
 
@@ -218,9 +358,12 @@
           else {
             const key = isoDate(day.date);
             const v = entriesByDate[key] || 0;
-            cell.style.background = colorFor(v, state.colors);
-            cell.title = v ? `${key}: ${v}` : `${key}: no entry`;
-            cell.dataset.date = key;
+            if (isFutureEmpty(day.date, v)) cell.style.visibility = "hidden";
+            else {
+              cell.style.background = colorFor(v, state.colors);
+              cell.title = v ? `${key}: ${v}` : `${key}: no entry`;
+              cell.dataset.date = key;
+            }
           }
           gridEl.appendChild(cell);
         }
@@ -294,39 +437,124 @@
       }
       function saveColorsDebounced() {
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => saveHabit({ colors: state.colors }), 400);
+        saveTimer = setTimeout(() => {
+          state.colors.scale = normalizeScale(state.colors.scale);
+          saveHabit({ colors: state.colors });
+        }, 400);
+      }
+
+      function syncLevelCountInput() {
+        const input = card.querySelector(".level-count");
+        if (input) input.value = state.colors.scale.length;
+      }
+
+      function updateGradedControls() {
+        const isBinary = state.mode === "binary";
+        card.querySelectorAll(".graded-only").forEach((el) => { el.hidden = isBinary; });
+        const gradBtn = card.querySelector(".gradient-fill-btn");
+        if (gradBtn) {
+          gradBtn.hidden = isBinary || state.colors.scale.length < 2;
+          gradBtn.textContent = state.colors.scale.length === 2
+            ? "Auto gradient (4 levels)"
+            : "Auto gradient";
+          gradBtn.title = "Blend colors evenly between the first and last swatch";
+        }
       }
 
       function buildSwatches() {
         const wrap = card.querySelector(".swatches");
         wrap.innerHTML = "";
+        const isBinary = state.mode === "binary";
         state.colors.scale.forEach((stop, i) => {
           const field = document.createElement("div"); field.className = "swatch-field";
-          const input = document.createElement("input"); input.type = "color"; input.value = stop.color;
-          input.addEventListener("input", () => {
-            state.colors.scale[i].color = input.value;
+
+          const colorInput = document.createElement("input");
+          colorInput.type = "color"; colorInput.value = stop.color;
+          colorInput.addEventListener("input", () => {
+            state.colors.scale[i].color = colorInput.value;
             paintGrid(); paintLegend();
             saveColorsDebounced();
           });
-          const label = document.createElement("span");
-          label.textContent = state.colors.scale.length === 1 ? "Done" : `≥ ${stop.min}`;
-          field.append(input, label); wrap.appendChild(field);
+
+          if (isBinary) {
+            const label = document.createElement("span");
+            label.textContent = "Done";
+            field.append(colorInput, label);
+          } else {
+            const minInput = document.createElement("input");
+            minInput.type = "number"; minInput.className = "min-val";
+            minInput.min = "1"; minInput.step = "any"; minInput.value = stop.min;
+            minInput.addEventListener("change", () => {
+              state.colors.scale[i].min = Math.max(1, Number(minInput.value) || 1);
+              state.colors.scale = normalizeScale(state.colors.scale);
+              buildSwatches(); paintGrid(); paintLegend();
+              saveColorsDebounced();
+            });
+            const minWrap = document.createElement("span");
+            minWrap.className = "min-wrap"; minWrap.textContent = "≥";
+            minWrap.title = "This color applies from this value upward";
+            minWrap.appendChild(minInput);
+            field.append(colorInput, minWrap);
+          }
+          wrap.appendChild(field);
         });
+        syncLevelCountInput();
+        updateGradedControls();
       }
 
       // init settings controls
       card.querySelector(`.mode[value=${state.mode}]`).checked = true;
+      syncLevelCountInput();
+      updateGradedControls();
+      card.querySelector(".level-count").addEventListener("change", (e) => {
+        const count = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+        e.target.value = count;
+        state.colors.scale = resizeScale(state.colors.scale, count);
+        buildSwatches(); paintGrid(); paintLegend();
+        updateGradedControls();
+        saveHabit({ colors: state.colors });
+      });
+      card.querySelectorAll(".step-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const input = card.querySelector(".level-count");
+          const next = Math.max(1, Math.min(10, (Number(input.value) || 1) + Number(btn.dataset.step)));
+          if (next === Number(input.value)) return;
+          input.value = next;
+          input.dispatchEvent(new Event("change"));
+        });
+      });
+      card.querySelector(".gradient-fill-btn").addEventListener("click", () => {
+        state.colors.scale = fillGradientScale(state.colors.scale);
+        buildSwatches(); paintGrid(); paintLegend();
+        updateGradedControls();
+        saveHabit({ colors: state.colors });
+      });
       card.querySelectorAll(".mode").forEach((radio) => {
         radio.addEventListener("change", () => {
           state.mode = radio.value;
-          state.colors = defaultColors(radio.value);
+          if (radio.value === "binary") {
+            // Stash the graded scale so switching back restores it.
+            state.colors = {
+              empty: state.colors.empty,
+              scale: defaultColors("binary").scale,
+              gradedScale: state.colors.gradedScale || state.colors.scale,
+            };
+          } else {
+            const saved = state.colors.gradedScale;
+            state.colors = {
+              empty: state.colors.empty,
+              scale: saved && saved.length ? normalizeScale(saved) : defaultColors("graded").scale,
+            };
+          }
+          updateGradedControls();
           buildSwatches(); repaint();
           saveHabit({ mode: state.mode, colors: state.colors });
         });
       });
-      card.querySelector(".settings-btn").addEventListener("click", () => {
+      card.querySelector(".settings-btn").addEventListener("click", (e) => {
         const s = card.querySelector(".settings");
         s.hidden = !s.hidden;
+        e.currentTarget.classList.toggle("open", !s.hidden);
       });
       card.querySelector(".name").addEventListener("change", (e) => {
         saveHabit({ name: e.target.value.trim() || "Untitled" });
