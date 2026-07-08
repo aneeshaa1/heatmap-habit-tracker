@@ -179,6 +179,7 @@
     const WANTED = (new URLSearchParams(location.search).get("habit") || "")
       .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     const PALETTE = ["#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429", "#0550ae", "#8250df", "#bf3989", "#cf222e", "#fb8500"];
+    const MAX_LEVELS = 50;
 
     const statusEl = document.getElementById("status");
     const habitsEl = document.getElementById("habits");
@@ -186,7 +187,7 @@
     // ---- Pure helpers ----
     function defaultColors(mode, count = 4) {
       if (mode === "binary") return { empty: "#ebedf0", scale: [{ min: 1, color: "#40c463" }] };
-      const n = Math.max(1, Math.min(10, count));
+      const n = Math.max(1, Math.min(MAX_LEVELS, count));
       const scale = [];
       for (let i = 0; i < n; i++) scale.push({ min: i + 1, color: PALETTE[i % PALETTE.length] });
       return { empty: "#ebedf0", scale };
@@ -198,7 +199,7 @@
     }
     function resizeScale(scale, count) {
       const sorted = normalizeScale(scale);
-      const n = Math.max(1, Math.min(10, count));
+      const n = Math.max(1, Math.min(MAX_LEVELS, count));
       const result = [];
       for (let i = 0; i < n; i++) {
         if (sorted[i]) result.push({ ...sorted[i] });
@@ -356,7 +357,7 @@
             <div class="setting-control">
               <div class="stepper">
                 <button type="button" class="step-btn" data-step="-1" aria-label="Fewer levels">−</button>
-                <input type="number" class="level-count" min="1" max="10" step="1" />
+                <input type="number" class="level-count" min="1" max="${MAX_LEVELS}" step="1" />
                 <button type="button" class="step-btn" data-step="1" aria-label="More levels">+</button>
               </div>
             </div>
@@ -541,7 +542,7 @@
       syncLevelCountInput();
       updateGradedControls();
       card.querySelector(".level-count").addEventListener("change", (e) => {
-        const count = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+        const count = Math.max(1, Math.min(MAX_LEVELS, Number(e.target.value) || 1));
         e.target.value = count;
         state.colors.scale = resizeScale(state.colors.scale, count);
         buildSwatches(); paintGrid(); paintLegend();
@@ -551,7 +552,7 @@
       card.querySelectorAll(".step-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const input = card.querySelector(".level-count");
-          const next = Math.max(1, Math.min(10, (Number(input.value) || 1) + Number(btn.dataset.step)));
+          const next = Math.max(1, Math.min(MAX_LEVELS, (Number(input.value) || 1) + Number(btn.dataset.step)));
           if (next === Number(input.value)) return;
           input.value = next;
           input.dispatchEvent(new Event("change"));
