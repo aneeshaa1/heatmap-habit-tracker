@@ -603,11 +603,11 @@
       card.querySelectorAll(".move-up, .move-down").forEach((btn) => { btn.hidden = WANTED.length > 0; });
       card.querySelector(".move-up").addEventListener("click", () => {
         const prev = card.previousElementSibling;
-        if (prev) { habitsEl.insertBefore(card, prev); persistOrder(); }
+        if (prev) { animateReorder(() => habitsEl.insertBefore(card, prev)); persistOrder(); }
       });
       card.querySelector(".move-down").addEventListener("click", () => {
         const next = card.nextElementSibling;
-        if (next) { habitsEl.insertBefore(next, card); persistOrder(); }
+        if (next) { animateReorder(() => habitsEl.insertBefore(next, card)); persistOrder(); }
       });
       // Two-step inline confirm: confirm() dialogs are blocked inside
       // sandboxed iframes (e.g. the Notion embed), so we can't use them.
@@ -643,6 +643,23 @@
         rows.push({ habit_id: habitId, date: key, value: 1 + Math.floor(Math.random() * 4) });
       }
       await supabase.from("entries").upsert(rows, { onConflict: "habit_id,date" });
+    }
+
+    // FLIP animation: measure each card's position, apply the DOM change, then
+    // slide every displaced card from its old spot to its new one.
+    function animateReorder(applyChange) {
+      const cards = [...habitsEl.children];
+      cards.forEach((el) => el.getAnimations().forEach((a) => a.finish()));
+      const before = new Map(cards.map((el) => [el, el.getBoundingClientRect().top]));
+      applyChange();
+      for (const el of cards) {
+        const dy = before.get(el) - el.getBoundingClientRect().top;
+        if (!dy) continue;
+        el.animate(
+          [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+          { duration: 250, easing: "ease-in-out" }
+        );
+      }
     }
 
     // Save every card's on-screen index as its position, so the order survives reloads.
