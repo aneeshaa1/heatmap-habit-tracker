@@ -22,6 +22,12 @@
     .btn.primary { background: #2da44e; color: #fff; border-color: #2da44e; }
     .btn.confirm { background: #cf222e; color: #fff; border-color: #cf222e; }
     .btn.icon { padding: 6px 9px; }
+    .add-bottom {
+      display: block; padding: 10px 18px; margin-bottom: 18px;
+      border: 1px dashed #d0d7de; border-radius: 10px; background: none;
+      font-size: 13px; color: #57606a; cursor: pointer;
+    }
+    .add-bottom:hover { border-color: #57606a; color: #1f2328; }
 
     .year-nav { display: inline-flex; align-items: center; gap: 2px; }
     .yr-btn {
@@ -184,6 +190,7 @@
     <div id="auth-msg"></div>
   </div>
   <div id="habits"></div>
+  <button type="button" class="add-bottom" id="add-habit-bottom" hidden>+ Add habit</button>
 
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -781,7 +788,7 @@
       for (const { error } of results) if (error) console.error(error);
     }
 
-    document.getElementById("add-habit").addEventListener("click", async () => {
+    async function addHabit() {
       const { data, error } = await supabase.from("habits")
         .insert({ name: "New habit", mode: "graded", colors: defaultColors("graded"),
                   position: habitsEl.children.length })
@@ -789,7 +796,9 @@
       if (error) { console.error(error); return; }
       renderHabitCard(data, []);
       window.scrollTo(0, document.body.scrollHeight);
-    });
+    }
+    document.getElementById("add-habit").addEventListener("click", addHabit);
+    document.getElementById("add-habit-bottom").addEventListener("click", addHabit);
 
     async function main() {
       try {
@@ -862,6 +871,9 @@
       authEl.hidden = true;
       logoutBtn.hidden = false;
       statusEl.hidden = WANTED.length > 0;
+      // Same rule as the header button: adding is a full-view action —
+      // a new habit wouldn't match a filtered embed anyway.
+      document.getElementById("add-habit-bottom").hidden = WANTED.length > 0;
       main();
     }
 
