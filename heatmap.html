@@ -22,6 +22,14 @@
     .btn.primary { background: #2da44e; color: #fff; border-color: #2da44e; }
     .btn.confirm { background: #cf222e; color: #fff; border-color: #cf222e; }
     .btn.icon { padding: 6px 9px; }
+
+    .year-nav { display: inline-flex; align-items: center; gap: 2px; }
+    .yr-btn {
+      border: none; background: none; cursor: pointer; padding: 2px 7px;
+      font-size: 15px; color: #57606a; border-radius: 6px; line-height: 1.2;
+    }
+    .yr-btn:hover { background: #f6f8fa; color: #1f2328; }
+    .yr-label { font-size: 13px; font-weight: 600; min-width: 40px; text-align: center; }
     #status { font-size: 12px; color: #57606a; margin-bottom: 16px; }
     #status.err { color: #cf222e; }
 
@@ -156,6 +164,11 @@
 <body>
   <div class="page-head">
     <h1>Habit Heatmap</h1>
+    <div class="year-nav" id="global-year-nav">
+      <button type="button" class="yr-btn" id="global-yr-prev" title="Previous year, all habits">‹</button>
+      <span class="yr-label" id="global-yr-label"></span>
+      <button type="button" class="yr-btn" id="global-yr-next" title="Next year, all habits">›</button>
+    </div>
     <button class="btn primary" id="add-habit">+ Add habit</button>
     <button class="btn" id="logout" hidden>Log out</button>
   </div>
@@ -179,7 +192,8 @@
     const SUPABASE_KEY = "sb_publishable_dbRHBbWuyeRyT_TmO4YPpQ_vONUyaGC";
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const YEAR = 2026;
+    const DEFAULT_YEAR = new Date().getFullYear();
+    let globalYear = DEFAULT_YEAR;
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const DEMO = false;  // only seeds the very first auto-created habit
 
@@ -269,11 +283,7 @@
     }
     function isFutureEmpty(date, value) {
       if (value) return false;
-      const today = startOfDay(new Date());
-      const day = startOfDay(date);
-      if (YEAR < today.getFullYear()) return false;
-      if (YEAR > today.getFullYear()) return true;
-      return day > today;
+      return startOfDay(date) > startOfDay(new Date());
     }
     function buildWeeks(year) {
       const first = new Date(year, 0, 1), last = new Date(year, 11, 31);
@@ -294,7 +304,9 @@
       return String(s).replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
-    const WEEKS = buildWeeks(YEAR);
+    // Week grids are identical for every habit showing the same year, so build once per year.
+    const WEEKS_BY_YEAR = {};
+    function weeksFor(year) { return WEEKS_BY_YEAR[year] ||= buildWeeks(year); }
 
     // ---- Shared popover ----
     let popover = null;
@@ -333,8 +345,9 @@
       const entriesByDate = {};
       for (const e of entryRows) entriesByDate[e.date] = Number(e.value);
 
-      // Per-card working state (mode + colors), synced to the DB on change.
-      const state = { mode: habit.mode || "graded", colors: resolveColors(habit) };
+      // Per-card working state (mode + colors + displayed year), synced to the DB
+      // on change — except year, which is a view preference and not persisted.
+      const state = { mode: habit.mode || "graded", colors: resolveColors(habit), year: globalYear };
 
       const card = document.createElement("div");
       card.className = "card";
@@ -342,6 +355,11 @@
       card.innerHTML = `
         <div class="card-head">
           <input class="name" value="${escapeHtml(habit.name)}" />
+          <div class="year-nav">
+            <button type="button" class="yr-btn yr-prev" title="Previous year">‹</button>
+            <span class="yr-label"></span>
+            <button type="button" class="yr-btn yr-next" title="Next year">›</button>
+          </div>
           <div class="card-actions">
             <button class="btn icon move-up" title="Move up">↑</button>
             <button class="btn icon move-down" title="Move down">↓</button>
@@ -408,7 +426,8 @@
           lbl.className = "day-label"; lbl.textContent = dayNames[r] || "";
           daysEl.appendChild(lbl);
         }
-        for (const week of WEEKS) for (const day of week) {
+        const weeks = weeksFor(state.year);
+        for (const week of weeks) for (const day of week) {
           const cell = document.createElement("div");
           cell.className = "cell";
           if (!day.inYear) cell.style.visibility = "hidden";
@@ -424,9 +443,9 @@
           }
           gridEl.appendChild(cell);
         }
-        monthsEl.style.gridTemplateColumns = `repeat(${WEEKS.length}, 12px)`;
+        monthsEl.style.gridTemplateColumns = `repeat(${weeks.length}, 12px)`;
         let lastMonth = -1;
-        WEEKS.forEach((week, i) => {
+        weeks.forEach((week, i) => {
           const firstInYear = week.find((d) => d.inYear);
           if (!firstInYear) return;
           const m = firstInYear.date.getMonth();
@@ -450,8 +469,8 @@
       }
 
       function paintHint() {
-        const n = Object.keys(entriesByDate).length;
-        hintEl.textContent = `${n} days logged · ` +
+        const n = Object.keys(entriesByDate).filter((k) => k.startsWith(state.year + "-")).length;
+        hintEl.textContent = `${n} days logged in ${state.year} · ` +
           (state.mode === "binary" ? "click a day to toggle" : "click a day to enter a value");
       }
 
@@ -671,6 +690,16 @@
       card.querySelector(".name").addEventListener("change", (e) => {
         saveHabit({ name: e.target.value.trim() || "Untitled" });
       });
+      const yrLabel = card.querySelector(".yr-label");
+      function setYear(y) {
+        state.year = y;
+        yrLabel.textContent = y;
+        paintGrid(); paintHint();
+      }
+      card._setYear = setYear;  // lets the global year control reach every card
+      card.querySelector(".yr-prev").addEventListener("click", () => setYear(state.year - 1));
+      card.querySelector(".yr-next").addEventListener("click", () => setYear(state.year + 1));
+      yrLabel.textContent = state.year;
       // Reordering only makes sense in the full view: a filtered embed sees a
       // subset, and renumbering just that subset would scramble the rest.
       card.querySelectorAll(".move-up, .move-down").forEach((btn) => { btn.hidden = WANTED.length > 0; });
@@ -709,7 +738,7 @@
     async function seedDemo(habitId) {
       const rows = []; const seen = {};
       for (let i = 0; i < 60; i++) {
-        const day = new Date(YEAR, 0, 1);
+        const day = new Date(DEFAULT_YEAR, 0, 1);
         day.setDate(day.getDate() + Math.floor(Math.random() * 189));
         const key = isoDate(day);
         if (seen[key]) continue; seen[key] = true;
@@ -734,6 +763,16 @@
         );
       }
     }
+
+    const globalYrLabel = document.getElementById("global-yr-label");
+    function setGlobalYear(y) {
+      globalYear = y;
+      globalYrLabel.textContent = y;
+      habitsEl.querySelectorAll(".card").forEach((c) => c._setYear(y));
+    }
+    document.getElementById("global-yr-prev").addEventListener("click", () => setGlobalYear(globalYear - 1));
+    document.getElementById("global-yr-next").addEventListener("click", () => setGlobalYear(globalYear + 1));
+    globalYrLabel.textContent = globalYear;
 
     // Save every card's on-screen index as its position, so the order survives reloads.
     async function persistOrder() {
@@ -777,7 +816,7 @@
 
         habitsEl.innerHTML = "";
         for (const habit of habits) renderHabitCard(habit, byHabit[habit.id] || []);
-        statusEl.textContent = `${habits.length} habit(s) · ${YEAR}`;
+        statusEl.textContent = `${habits.length} habit(s)`;
       } catch (err) {
         statusEl.hidden = false;
         statusEl.textContent = "Error: " + err.message;
