@@ -133,6 +133,14 @@
     }
     .gradient-fill-btn:hover { text-decoration: underline; }
 
+    .scheme-select, .scheme-name {
+      padding: 4px 8px; border: 1px solid #d0d7de; border-radius: 8px;
+      font-size: 12px; background: #fff; color: #1f2328;
+    }
+    .scheme-name { width: 100px; }
+    .scheme-name:focus { border-color: #0969da; outline: none; }
+    .setting-control .btn { font-size: 12px; padding: 4px 10px; }
+
     .settings-btn.open { background: #eaeef2; }
     label { cursor: pointer; }
 
@@ -218,6 +226,7 @@
         if (Array.isArray(c.gradedScale) && c.gradedScale.length) {
           out.gradedScale = normalizeScale(c.gradedScale);
         }
+        if (Array.isArray(c.presets) && c.presets.length) out.presets = c.presets;
         return out;
       }
       return defaultColors(habit.mode || "graded");
@@ -371,6 +380,15 @@
             <div class="setting-control">
               <div class="swatches"></div>
               <button type="button" class="gradient-fill-btn" hidden>Auto gradient</button>
+            </div>
+          </div>
+          <div class="setting graded-only">
+            <span class="setting-label">Schemes</span>
+            <div class="setting-control">
+              <select class="scheme-select"></select>
+              <input type="text" class="scheme-name" placeholder="Scheme name" maxlength="24" />
+              <button type="button" class="btn scheme-save">Save current</button>
+              <button type="button" class="btn scheme-delete" hidden>Delete</button>
             </div>
           </div>
         </div>`;
@@ -568,9 +586,63 @@
         updateGradedControls();
         saveHabit({ colors: state.colors });
       });
+
+      // ---- Saved color schemes ----
+      const schemeSelect = card.querySelector(".scheme-select");
+      const schemeNameInput = card.querySelector(".scheme-name");
+      const schemeDeleteBtn = card.querySelector(".scheme-delete");
+      const presets = () => state.colors.presets || [];
+
+      function syncSchemeUI() {
+        schemeSelect.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = presets().length ? "Switch scheme…" : "No saved schemes";
+        schemeSelect.appendChild(placeholder);
+        presets().forEach((p, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i); opt.textContent = p.name;
+          schemeSelect.appendChild(opt);
+        });
+        schemeSelect.disabled = !presets().length;
+        schemeDeleteBtn.hidden = true;
+      }
+
+      schemeSelect.addEventListener("change", () => {
+        const preset = presets()[Number(schemeSelect.value)];
+        if (!preset) { schemeDeleteBtn.hidden = true; return; }
+        // Deep-copy so later color edits don't silently rewrite the saved scheme.
+        state.colors.scale = normalizeScale(preset.scale.map((s) => ({ ...s })));
+        buildSwatches(); paintGrid(); paintLegend();
+        updateGradedControls();
+        saveHabit({ colors: state.colors });
+        schemeDeleteBtn.hidden = false;
+      });
+
+      card.querySelector(".scheme-save").addEventListener("click", () => {
+        const name = schemeNameInput.value.trim() || `Scheme ${presets().length + 1}`;
+        if (!state.colors.presets) state.colors.presets = [];
+        state.colors.presets.push({ name, scale: state.colors.scale.map((s) => ({ ...s })) });
+        schemeNameInput.value = "";
+        syncSchemeUI();
+        schemeSelect.value = String(presets().length - 1);
+        schemeDeleteBtn.hidden = false;
+        saveHabit({ colors: state.colors });
+      });
+
+      schemeDeleteBtn.addEventListener("click", () => {
+        const i = Number(schemeSelect.value);
+        if (!presets()[i]) return;
+        state.colors.presets.splice(i, 1);
+        syncSchemeUI();
+        saveHabit({ colors: state.colors });
+      });
+
+      syncSchemeUI();
       card.querySelectorAll(".mode").forEach((radio) => {
         radio.addEventListener("change", () => {
           state.mode = radio.value;
+          const keepPresets = state.colors.presets;
           if (radio.value === "binary") {
             // Stash the graded scale so switching back restores it.
             state.colors = {
@@ -585,6 +657,7 @@
               scale: saved && saved.length ? normalizeScale(saved) : defaultColors("graded").scale,
             };
           }
+          if (keepPresets && keepPresets.length) state.colors.presets = keepPresets;
           updateGradedControls();
           buildSwatches(); repaint();
           saveHabit({ mode: state.mode, colors: state.colors });
